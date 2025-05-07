@@ -12,3 +12,5 @@ idf_component_register(
     REQUIRES ${require_components})
 
 idf_component_set_property(${COMPONENT_NAME} WHOLE_ARCHIVE TRUE)
+
+target_link_libraries(${COMPONENT_LIB} INTERFACE "-u esp_at_custom_cmd_register")
