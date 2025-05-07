@@ -11,7 +11,7 @@
 static uint8_t at_test_cmd_test(uint8_t *cmd_name)
 {
     uint8_t buffer[64] = {0};
-    snprintf((char *)buffer, 64, "test command: <AT%s=?> is executed\r\n", cmd_name);
+    snprintf((char *)buffer, 64, "test command: <AT%s=?> is executed. Hooray!\r\n", cmd_name);
     esp_at_port_write_data(buffer, strlen((char *)buffer));
 
     return ESP_AT_RESULT_CODE_OK;
