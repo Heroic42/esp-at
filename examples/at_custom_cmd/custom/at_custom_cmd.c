@@ -8,12 +8,30 @@
 #include <stdbool.h>
 #include "esp_at.h"
 
+#include "esp_sdp_api.h"
+
+#if (BT_CONTROLLER_INCLUDED == TRUE)
+#include "esp_bt.h"
+#endif
+
+
 static uint8_t at_test_cmd_test(uint8_t *cmd_name)
 {
     uint8_t buffer[64] = {0};
     snprintf((char *)buffer, 64, "test command: <AT%s=?> is executed\r\n", cmd_name);
     esp_at_port_write_data(buffer, strlen((char *)buffer));
 
+    if ((esp_sdp_init()) != ESP_OK) {
+        snprintf((char *)buffer, 64, "BT Init failed\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        return ESP_AT_RESULT_CODE_ERROR;
+    }
+    else
+    {
+        snprintf((char *)buffer, 64, "BT Init success!\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+    }
+    
     return ESP_AT_RESULT_CODE_OK;
 }
 
