@@ -22,8 +22,8 @@ static bool bd_already_init = false;
 static char* sdp_service_name = "GEODE-IAP2";
 static const uint8_t  UUID_UNKNOWN[] = { 0x00, 0x00, 0x00, 0x00, 0xDE, 0xCA, 0xFA, 0xDE, 0xDE, 0xCA, 0xDE, 0xAF, 0xDE, 0xCA, 0xCA, 0xFF};
 
-#define BT_L2CAP_DYNAMIC_PSM           0x1001
-#define BT_UNKNOWN_PROFILE_VERSION     0x0100
+#define BT_L2CAP_DYNAMIC_PSM           0x1000
+#define BT_UNKNOWN_PROFILE_VERSION     0x0102
 
 static const char local_device_name[] = "EXAMPLE";
 
