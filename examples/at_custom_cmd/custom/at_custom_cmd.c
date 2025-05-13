@@ -27,6 +27,9 @@ static const uint8_t  UUID_UNKNOWN[] = { 0x00, 0x00, 0x00, 0x00, 0xDE, 0xCA, 0xF
 
 static const char local_device_name[] = "EXAMPLE";
 
+static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* param);
+static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param);
+
 static uint8_t at_test_cmd_test(uint8_t *cmd_name)
 {
     uint8_t buffer[64] = {0};
@@ -35,7 +38,7 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
     esp_at_port_write_data(buffer, strlen((char *)buffer));
 
     //Initial Bluetooth Controller
-    if(esp_bt_controller_init(&bt_cfg) != ESP_OK)
+    if (esp_bt_controller_init(&bt_cfg) != ESP_OK)
     {
         snprintf((char *)buffer, 64, "Bluetooth Controller Init failed\r\n");
         esp_at_port_write_data(buffer, strlen((char *)buffer));
@@ -84,6 +87,25 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
         esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
+    //Register GAP Callback
+    esp_bt_gap_register_callback(bt_app_gap_cb);
+
+    //Set Device Name
+    if (esp_bt_gap_set_device_name(local_device_name) != ESP_OK)
+    {
+        snprintf((char*)buffer, 64, "BT Device Name Set failed\r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        return ESP_AT_RESULT_CODE_ERROR;
+    }
+    else
+    {
+        snprintf((char*)buffer, 64, "BT Device Name Set success!\r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+    }
+
+    //Register SDP Callback
+    esp_sdp_register_callback(bt_app_sdp_cb);
+
     //Initialize SDP
     if ((esp_sdp_init()) != ESP_OK) {
         snprintf((char *)buffer, 64, "BT SDP Init failed\r\n");
@@ -95,6 +117,7 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
         snprintf((char *)buffer, 64, "BT SDP Init success!\r\n");
         esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
+
 
     esp_bluetooth_sdp_raw_record_t record = { 0 };
 
@@ -163,18 +186,7 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
         esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
-    //Set Device Name
-    if (esp_bt_gap_set_device_name(local_device_name) != ESP_OK)
-    {
-        snprintf((char *)buffer, 64, "BT Device Name Set failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "BT Device Name Set success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
+    
 
     //Set Scan Mode
     if (esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE) != ESP_OK)
@@ -257,3 +269,120 @@ bool esp_at_custom_cmd_register(void)
 }
 
 ESP_AT_CMD_SET_INIT_FN(esp_at_custom_cmd_register, 1);
+
+static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* param)
+{
+    uint8_t* bda = NULL;
+    uint8_t buffer[64] = { 0 };
+    
+    switch (event) {
+        /* when authentication completed, this event comes */
+    case ESP_BT_GAP_AUTH_CMPL_EVT: {
+        if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
+            //ESP_LOGI(BT_AV_TAG, "authentication success: %s", param->auth_cmpl.device_name);
+            //ESP_LOG_BUFFER_HEX(BT_AV_TAG, param->auth_cmpl.bda, ESP_BD_ADDR_LEN);
+            snprintf((char*)buffer, 64, "ESP_BT_GAP_AUTH_CMPL_EVT: %s\r\n", param->auth_cmpl.device_name);
+            esp_at_port_write_data(buffer, strlen((char*)buffer));
+        }
+        else {
+            //ESP_LOGE(BT_AV_TAG, "authentication failed, status: %d", param->auth_cmpl.stat);
+            snprintf((char*)buffer, 64, "ESP_BT_GAP_AUTH_CMPL_EVT - Authentication Failed: %d\r\n", param->auth_cmpl.stat);
+            esp_at_port_write_data(buffer, strlen((char*)buffer));
+        }
+        //ESP_LOGI(BT_AV_TAG, "link key type of current link is: %d", param->auth_cmpl.lk_type);
+        break;
+    }
+    case ESP_BT_GAP_ENC_CHG_EVT: {
+        char* str_enc[3] = { "OFF", "E0", "AES" };
+        bda = (uint8_t*)param->enc_chg.bda;
+        //ESP_LOGI(BT_AV_TAG, "Encryption mode to [%02x:%02x:%02x:%02x:%02x:%02x] changed to %s",
+        //    bda[0], bda[1], bda[2], bda[3], bda[4], bda[5], str_enc[param->enc_chg.enc_mode]);
+        break;
+    }
+
+
+                               /* when Security Simple Pairing user confirmation requested, this event comes */
+    case ESP_BT_GAP_CFM_REQ_EVT:
+        //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_CFM_REQ_EVT Please compare the numeric value: %06"PRIu32, param->cfm_req.num_val);
+        snprintf((char*)buffer, 64, "ESP_BT_GAP_CFM_REQ_EVT Please compare the numeric value: %06u32\r\n", param->cfm_req.num_val);
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
+        break;
+        /* when Security Simple Pairing passkey notified, this event comes */
+    case ESP_BT_GAP_KEY_NOTIF_EVT:
+        snprintf((char*)buffer, 64, "ESP_BT_GAP_KEY_NOTIF_EVT - SSP passkey notified \r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_KEY_NOTIF_EVT passkey: %06"PRIu32, param->key_notif.passkey);
+        break;
+        /* when Security Simple Pairing passkey requested, this event comes */
+    case ESP_BT_GAP_KEY_REQ_EVT:
+        snprintf((char*)buffer, 64, "ESP_BT_GAP_KEY_REQ_EVT - SSP passkey required \r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_KEY_REQ_EVT Please enter passkey!");
+        break;
+
+
+        /* when GAP mode changed, this event comes */
+    case ESP_BT_GAP_MODE_CHG_EVT:
+        //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_MODE_CHG_EVT mode: %d, interval: %.2f ms",
+        //    param->mode_chg.mode, param->mode_chg.interval * 0.625);
+        break;
+        /* when ACL connection completed, this event comes */
+    case ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT:
+        bda = (uint8_t*)param->acl_conn_cmpl_stat.bda;
+        //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_ACL_CONN_CMPL_STAT_EVT Connected to [%02x:%02x:%02x:%02x:%02x:%02x], status: 0x%x",
+        //    bda[0], bda[1], bda[2], bda[3], bda[4], bda[5], param->acl_conn_cmpl_stat.stat);
+        break;
+        /* when ACL disconnection completed, this event comes */
+    case ESP_BT_GAP_ACL_DISCONN_CMPL_STAT_EVT:
+        bda = (uint8_t*)param->acl_disconn_cmpl_stat.bda;
+        //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_ACL_DISC_CMPL_STAT_EVT Disconnected from [%02x:%02x:%02x:%02x:%02x:%02x], reason: 0x%x",
+        //    bda[0], bda[1], bda[2], bda[3], bda[4], bda[5], param->acl_disconn_cmpl_stat.reason);
+        break;
+        /* others */
+    case ESP_BT_GAP_CONFIG_EIR_DATA_EVT:
+        if (param->config_eir_data.stat == ESP_BT_STATUS_SUCCESS)
+        {
+            snprintf((char*)buffer, 64, "ESP_BT_GAP_CONFIG_EIR_DATA_EVT Success \r\n");
+            esp_at_port_write_data(buffer, strlen((char*)buffer));
+        }
+        else
+        {
+            snprintf((char*)buffer, 64, "ESP_BT_GAP_CONFIG_EIR_DATA_EVT Fail \r\n");
+            esp_at_port_write_data(buffer, strlen((char*)buffer));
+        }
+        break;
+    default: {
+        //ESP_LOGI(BT_AV_TAG, "event: %d", event);
+        break;
+    }
+    }
+}
+
+static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param) 
+{
+    uint8_t* bda = NULL;
+    uint8_t buffer[64] = { 0 };
+
+    switch (event) {
+    case ESP_SDP_INIT_EVT:
+        snprintf((char*)buffer, 64, "ESP_SDP_CREATE_RECORD_COMP_EVT - SDP Initialized:\r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        break;
+    case ESP_SDP_DEINIT_EVT:
+        break;
+    case ESP_SDP_SEARCH_COMP_EVT:
+        break;
+    case ESP_SDP_CREATE_RECORD_COMP_EVT:
+        snprintf((char*)buffer, 64, "ESP_SDP_CREATE_RECORD_COMP_EVT - SDP Record Created:\r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        break;
+    case ESP_SDP_REMOVE_RECORD_COMP_EVT:
+        break;
+
+    default: {
+        //ESP_LOGI(BT_AV_TAG, "event: %d", event);
+        break;
+    }
+    }
+}
