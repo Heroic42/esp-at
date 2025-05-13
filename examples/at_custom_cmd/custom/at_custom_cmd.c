@@ -20,9 +20,11 @@ static bool bd_already_enable = false;
 static bool bd_already_init = false;
 
 static char* sdp_service_name = "GEODE-IAP2";
+static char* spp_service_name = "GEODE-SPP";
 static const uint8_t  UUID_UNKNOWN[] = { 0x00, 0x00, 0x00, 0x00, 0xDE, 0xCA, 0xFA, 0xDE, 0xDE, 0xCA, 0xDE, 0xAF, 0xDE, 0xCA, 0xCA, 0xFF};
+static const uint8_t UUID_SPP[] = {0x01, 0x11};
 
-#define BT_L2CAP_DYNAMIC_PSM           0x1000
+#define BT_L2CAP_DYNAMIC_PSM           0x0001
 #define BT_UNKNOWN_PROFILE_VERSION     0x0102
 
 static const char local_device_name[] = "EXAMPLE";
@@ -63,8 +65,10 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
         esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
+    esp_bluedroid_config_t bluedroid_cfg = BT_BLUEDROID_INIT_CONFIG_DEFAULT();
+    bluedroid_cfg.ssp_en = true;
     //Initialize Bluedroid
-    if ((esp_bluedroid_init()) != ESP_OK) {
+    if ((esp_bluedroid_init_with_cfg(&bluedroid_cfg)) != ESP_OK) {
         snprintf((char *)buffer, 64, "Bluedroid Init failed\r\n");
         esp_at_port_write_data(buffer, strlen((char *)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
@@ -118,28 +122,54 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
         esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
+    esp_bluetooth_sdp_raw_record_t spp_record = { 0 };
+
+    spp_record.hdr.type = ESP_SDP_TYPE_RAW;
+    spp_record.hdr.uuid.len = sizeof(UUID_SPP);
+    spp_record.hdr.uuid.uuid.uuid16 = UUID_SPP[0] + (UUID_SPP[1]<<8);
+    spp_record.hdr.service_name_length = strlen(spp_service_name)+1;
+    spp_record.hdr.service_name = spp_service_name;
+    spp_record.hdr.rfcomm_channel_number = 1;
+    spp_record.hdr.l2cap_psm = BT_L2CAP_DYNAMIC_PSM;
+    spp_record.hdr.user1_ptr = NULL;
+    spp_record.hdr.user1_ptr_len = 0;
 
     esp_bluetooth_sdp_raw_record_t record = { 0 };
 
     record.hdr.type = ESP_SDP_TYPE_RAW;
     record.hdr.uuid.len = sizeof(UUID_UNKNOWN);
     memcpy(record.hdr.uuid.uuid.uuid128, UUID_UNKNOWN, sizeof(UUID_UNKNOWN));
-    record.hdr.service_name_length = strlen(sdp_service_name) + 1;
+    record.hdr.service_name_length = strlen(sdp_service_name)+1;
     record.hdr.service_name = sdp_service_name;
     record.hdr.rfcomm_channel_number = 2;
     record.hdr.l2cap_psm = BT_L2CAP_DYNAMIC_PSM;
     record.hdr.profile_version = BT_UNKNOWN_PROFILE_VERSION;
+    record.hdr.user1_ptr = NULL;
+    record.hdr.user1_ptr_len = 0;
 
-    //Set SDP Record
-    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK)
+
+    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&spp_record) != ESP_OK)
     {
-        snprintf((char *)buffer, 64, "BT SDP Record failed\r\n");
+        snprintf((char *)buffer, 64, "BT SPP SDP Record failed\r\n");
         esp_at_port_write_data(buffer, strlen((char *)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
     }
     else
     {
-        snprintf((char *)buffer, 64, "BT SDP Record success!\r\n");
+        snprintf((char *)buffer, 64, "BT SPP SDP Record success!\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+    }
+
+    //Set SDP Record
+    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK)
+    {
+        snprintf((char *)buffer, 64, "BT iAP2 SDP Record failed\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        return ESP_AT_RESULT_CODE_ERROR;
+    }
+    else
+    {
+        snprintf((char *)buffer, 64, "BT iAP2 SDP Record success!\r\n");
         esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
@@ -361,7 +391,6 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* pa
 
 static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param) 
 {
-    uint8_t* bda = NULL;
     uint8_t buffer[64] = { 0 };
 
     switch (event) {
