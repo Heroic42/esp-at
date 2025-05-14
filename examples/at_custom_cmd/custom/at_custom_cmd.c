@@ -24,10 +24,9 @@ static const esp_spp_sec_t sec_mask = ESP_SPP_SEC_AUTHENTICATE;
 static const esp_spp_role_t role_slave = ESP_SPP_ROLE_SLAVE;
 static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_CB;
 static const bool esp_spp_enable_l2cap_ertm = true;
-#define SPP_SERVER_NAME "SPP_SERVER"
+#define SPP_SERVER_NAME "GEODE-SPP"
 
 static char* sdp_service_name = "GEODE-IAP2";
-static char* spp_service_name = "GEODE-SPP";
 static const uint8_t  UUID_UNKNOWN[] = { 0x00, 0x00, 0x00, 0x00, 0xDE, 0xCA, 0xFA, 0xDE, 0xDE, 0xCA, 0xDE, 0xAF, 0xDE, 0xCA, 0xCA, 0xFF};
 static const uint8_t UUID_SPP[] = {0x01, 0x11};
 
@@ -40,7 +39,7 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* pa
 static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param);
 static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 
-static uint8_t at_test_cmd_test(uint8_t *cmd_name)
+static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 {
     uint8_t buffer[64] = {0};
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
@@ -149,18 +148,6 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
         esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
-    esp_bluetooth_sdp_raw_record_t spp_record = { 0 };
-
-    spp_record.hdr.type = ESP_SDP_TYPE_RAW;
-    spp_record.hdr.uuid.len = sizeof(UUID_SPP);
-    spp_record.hdr.uuid.uuid.uuid16 = UUID_SPP[0] + (UUID_SPP[1]<<8);
-    spp_record.hdr.service_name_length = strlen(spp_service_name)+1;
-    spp_record.hdr.service_name = spp_service_name;
-    spp_record.hdr.rfcomm_channel_number = 1;
-    spp_record.hdr.l2cap_psm = BT_L2CAP_DYNAMIC_PSM;
-    spp_record.hdr.user1_ptr = NULL;
-    spp_record.hdr.user1_ptr_len = 0;
-
     esp_bluetooth_sdp_raw_record_t record = { 0 };
 
     record.hdr.type = ESP_SDP_TYPE_RAW;
@@ -173,19 +160,6 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
     record.hdr.profile_version = BT_UNKNOWN_PROFILE_VERSION;
     record.hdr.user1_ptr = NULL;
     record.hdr.user1_ptr_len = 0;
-
-
-    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&spp_record) != ESP_OK)
-    {
-        snprintf((char *)buffer, 64, "BT SPP SDP Record failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "BT SPP SDP Record success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
 
     //Set SDP Record
     if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK)
@@ -264,57 +238,8 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
     return ESP_AT_RESULT_CODE_OK;
 }
 
-static uint8_t at_query_cmd_test(uint8_t *cmd_name)
-{
-    uint8_t buffer[64] = {0};
-    snprintf((char *)buffer, 64, "query command: <AT%s?> is executed\r\n", cmd_name);
-    esp_at_port_write_data(buffer, strlen((char *)buffer));
-
-    return ESP_AT_RESULT_CODE_OK;
-}
-
-static uint8_t at_setup_cmd_test(uint8_t para_num)
-{
-    uint8_t index = 0;
-
-    // get first parameter, and parse it into a digit
-    int32_t digit = 0;
-    if (esp_at_get_para_as_digit(index++, &digit) != ESP_AT_PARA_PARSE_RESULT_OK) {
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-
-    // get second parameter, and parse it into a string
-    uint8_t *str = NULL;
-    if (esp_at_get_para_as_str(index++, &str) != ESP_AT_PARA_PARSE_RESULT_OK) {
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-
-    // allocate a buffer and construct the data, then send the data to mcu via interface (uart/spi/sdio/socket)
-    uint8_t *buffer = (uint8_t *)malloc(512);
-    if (!buffer) {
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    int len = snprintf((char *)buffer, 512, "setup command: <AT%s=%d,\"%s\"> is executed\r\n",
-                       esp_at_get_current_cmd_name(), digit, str);
-    esp_at_port_write_data(buffer, len);
-
-    // remember to free the buffer
-    free(buffer);
-
-    return ESP_AT_RESULT_CODE_OK;
-}
-
-static uint8_t at_exe_cmd_test(uint8_t *cmd_name)
-{
-    uint8_t buffer[64] = {0};
-    snprintf((char *)buffer, 64, "execute command: <AT%s> is executed\r\n", cmd_name);
-    esp_at_port_write_data(buffer, strlen((char *)buffer));
-
-    return ESP_AT_RESULT_CODE_OK;
-}
-
-static const esp_at_cmd_struct at_custom_cmd[] = {
-    {"+TEST", at_test_cmd_test, at_query_cmd_test, at_setup_cmd_test, at_exe_cmd_test},
+static const esp_at_cmd_struct at_custom_cmd_gazelle[] = {
+    {"+GAZELLE_INIT", NULL, NULL, NULL, at_exe_cmd_gazelle_init},
     /**
      * @brief You can define your own AT commands here.
      */
@@ -322,10 +247,13 @@ static const esp_at_cmd_struct at_custom_cmd[] = {
 
 bool esp_at_custom_cmd_register(void)
 {
-    return esp_at_custom_cmd_array_regist(at_custom_cmd, sizeof(at_custom_cmd) / sizeof(esp_at_cmd_struct));
+
+    return esp_at_custom_cmd_array_regist(at_custom_cmd_gazelle, sizeof(at_custom_cmd_gazelle) / sizeof(esp_at_cmd_struct));
 }
 
 ESP_AT_CMD_SET_INIT_FN(esp_at_custom_cmd_register, 1);
+
+
 
 static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* param)
 {
