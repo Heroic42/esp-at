@@ -42,96 +42,13 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 {
     uint8_t buffer[64] = {0};
-    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-    snprintf((char *)buffer, 64, "test command: <AT%s=?> is executed\r\n", cmd_name);
-    esp_at_port_write_data(buffer, strlen((char *)buffer));
-
-    //Initial Bluetooth Controller
-    if (esp_bt_controller_init(&bt_cfg) != ESP_OK)
-    {
-        snprintf((char *)buffer, 64, "Bluetooth Controller Init failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "Bluetooth Controller Init success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
-
-    //Enable Bluetooth Controller
-    if(esp_bt_controller_enable(ESP_BT_MODE_BTDM) != ESP_OK)
-    {
-        snprintf((char *)buffer, 64, "Bluetooth Controller Enable failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "Bluetooth Controller Enable success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
-
-    esp_bluedroid_config_t bluedroid_cfg = BT_BLUEDROID_INIT_CONFIG_DEFAULT();
-    bluedroid_cfg.ssp_en = true;
-    //Initialize Bluedroid
-    if ((esp_bluedroid_init_with_cfg(&bluedroid_cfg)) != ESP_OK) {
-        snprintf((char *)buffer, 64, "Bluedroid Init failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "Bluedroid Init success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
-
-    //Enable Bluedroid
-    if ((esp_bluedroid_enable()) != ESP_OK) {
-        snprintf((char *)buffer, 64, "Bluedroid Enable failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "Bluedroid Enable success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
-
+    
     //Register GAP Callback
     esp_bt_gap_register_callback(bt_app_gap_cb);
 
     //Register SPP Callback
     esp_spp_register_callback(esp_spp_cb);
 
-    esp_spp_cfg_t bt_spp_cfg = {
-        .mode = esp_spp_mode,
-        .enable_l2cap_ertm = esp_spp_enable_l2cap_ertm,
-        .tx_buffer_size = 0, /* Only used for ESP_SPP_MODE_VFS mode */
-    };
-    if (esp_spp_enhanced_init(&bt_spp_cfg) != ESP_OK) {
-        snprintf((char *)buffer, 64, "SPP Callback Register failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "SPP Callback Register success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
-
-    //Set Device Name
-    if (esp_bt_gap_set_device_name(local_device_name) != ESP_OK)
-    {
-        snprintf((char*)buffer, 64, "BT Device Name Set failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char*)buffer, 64, "BT Device Name Set success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
-    }
 
     //Register SDP Callback
     esp_sdp_register_callback(bt_app_sdp_cb);
@@ -155,7 +72,7 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
     memcpy(record.hdr.uuid.uuid.uuid128, UUID_UNKNOWN, sizeof(UUID_UNKNOWN));
     record.hdr.service_name_length = strlen(sdp_service_name)+1;
     record.hdr.service_name = sdp_service_name;
-    record.hdr.rfcomm_channel_number = 2;
+    record.hdr.rfcomm_channel_number = 1;
     record.hdr.l2cap_psm = BT_L2CAP_DYNAMIC_PSM;
     record.hdr.profile_version = BT_UNKNOWN_PROFILE_VERSION;
     record.hdr.user1_ptr = NULL;
