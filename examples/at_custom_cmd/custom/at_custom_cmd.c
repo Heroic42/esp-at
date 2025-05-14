@@ -11,6 +11,7 @@
 #include "esp_bt_main.h"
 #include "esp_gap_bt_api.h"
 #include "esp_sdp_api.h"
+#include "esp_spp_api.h"
 
 #if (BT_CONTROLLER_INCLUDED == TRUE)
 #include "esp_bt.h"
@@ -18,6 +19,12 @@
 
 static bool bd_already_enable = false;
 static bool bd_already_init = false;
+
+static const esp_spp_sec_t sec_mask = ESP_SPP_SEC_AUTHENTICATE;
+static const esp_spp_role_t role_slave = ESP_SPP_ROLE_SLAVE;
+static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_CB;
+static const bool esp_spp_enable_l2cap_ertm = true;
+#define SPP_SERVER_NAME "SPP_SERVER"
 
 static char* sdp_service_name = "GEODE-IAP2";
 static char* spp_service_name = "GEODE-SPP";
@@ -31,6 +38,7 @@ static const char local_device_name[] = "EXAMPLE";
 
 static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* param);
 static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param);
+static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 
 static uint8_t at_test_cmd_test(uint8_t *cmd_name)
 {
@@ -93,6 +101,25 @@ static uint8_t at_test_cmd_test(uint8_t *cmd_name)
 
     //Register GAP Callback
     esp_bt_gap_register_callback(bt_app_gap_cb);
+
+    //Register SPP Callback
+    esp_spp_register_callback(esp_spp_cb);
+
+    esp_spp_cfg_t bt_spp_cfg = {
+        .mode = esp_spp_mode,
+        .enable_l2cap_ertm = esp_spp_enable_l2cap_ertm,
+        .tx_buffer_size = 0, /* Only used for ESP_SPP_MODE_VFS mode */
+    };
+    if (esp_spp_enhanced_init(&bt_spp_cfg) != ESP_OK) {
+        snprintf((char *)buffer, 64, "SPP Callback Register failed\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        return ESP_AT_RESULT_CODE_ERROR;
+    }
+    else
+    {
+        snprintf((char *)buffer, 64, "SPP Callback Register success!\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+    }
 
     //Set Device Name
     if (esp_bt_gap_set_device_name(local_device_name) != ESP_OK)
@@ -413,5 +440,68 @@ static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param)
         //ESP_LOGI(BT_AV_TAG, "event: %d", event);
         break;
     }
+    }
+}
+
+static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
+{
+    char bda_str[18] = {0};
+    uint8_t buffer[64] = { 0 };
+
+    switch (event) {
+    case ESP_SPP_INIT_EVT:
+        if (param->init.status == ESP_SPP_SUCCESS) {
+            //ESP_LOGI(SPP_TAG, "ESP_SPP_INIT_EVT");
+            snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Initialized\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+            esp_spp_start_srv(sec_mask, role_slave, 2, SPP_SERVER_NAME);
+        } else {
+            snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Failed\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        }
+        break;
+    case ESP_SPP_DISCOVERY_COMP_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_DISCOVERY_COMP_EVT");
+        break;
+    case ESP_SPP_OPEN_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_OPEN_EVT");
+        break;
+    case ESP_SPP_CLOSE_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_CLOSE_EVT status:%d handle:%"PRIu32" close_by_remote:%d", param->close.status,
+        //         param->close.handle, param->close.async);
+        break;
+    case ESP_SPP_START_EVT:
+        if (param->start.status == ESP_SPP_SUCCESS) {
+            snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Success\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        } else {
+            snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Failed\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        }
+        break;
+    case ESP_SPP_CL_INIT_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_CL_INIT_EVT");
+        break;
+    case ESP_SPP_DATA_IND_EVT:
+        //
+        break;
+    case ESP_SPP_CONG_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_CONG_EVT");
+        break;
+    case ESP_SPP_WRITE_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_WRITE_EVT");
+        break;
+    case ESP_SPP_SRV_OPEN_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_OPEN_EVT status:%d handle:%"PRIu32", rem_bda:[%s]", param->srv_open.status,
+        //         param->srv_open.handle, bda2str(param->srv_open.rem_bda, bda_str, sizeof(bda_str)));
+        break;
+    case ESP_SPP_SRV_STOP_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_STOP_EVT");
+        break;
+    case ESP_SPP_UNINIT_EVT:
+        //ESP_LOGI(SPP_TAG, "ESP_SPP_UNINIT_EVT");
+        break;
+    default:
+        break;
     }
 }
