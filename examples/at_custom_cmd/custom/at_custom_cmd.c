@@ -55,14 +55,7 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 
     //Initialize SDP
     if ((esp_sdp_init()) != ESP_OK) {
-        snprintf((char *)buffer, 64, "BT SDP Init failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "BT SDP Init success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
     esp_bluetooth_sdp_raw_record_t record = { 0 };
@@ -81,14 +74,7 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
     //Set SDP Record
     if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK)
     {
-        snprintf((char *)buffer, 64, "BT iAP2 SDP Record failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "BT iAP2 SDP Record success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
     //Configure EIR Data
@@ -106,14 +92,7 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
     //Configure EIR Data
     if (esp_bt_gap_config_eir_data(&eir_data) != ESP_OK)
     {
-        snprintf((char *)buffer, 64, "BT EIR Data failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
-    }
-    else
-    {
-        snprintf((char *)buffer, 64, "BT EIR Data success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
     }
 
     //Enable Secure Simple Pairing
@@ -124,33 +103,14 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 
     if (esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t)) != ESP_OK)
     {
-        snprintf((char *)buffer, 64, "BT SSP Parameters failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
     }
-    else
-    {
-        snprintf((char *)buffer, 64, "BT SSP Parameters success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
-
-    
 
     //Set Scan Mode
     if (esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE) != ESP_OK)
     {
-        snprintf((char *)buffer, 64, "BT Scan set failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
     }
-    else
-    {
-        snprintf((char *)buffer, 64, "BT Scan set success!\r\n");
-        esp_at_port_write_data(buffer, strlen((char *)buffer));
-    }
-    
-    snprintf((char *)buffer, 64, "BT Init success!\r\n");
-    esp_at_port_write_data(buffer, strlen((char *)buffer));
 
     return ESP_AT_RESULT_CODE_OK;
 }
@@ -183,13 +143,13 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* pa
         if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
             //ESP_LOGI(BT_AV_TAG, "authentication success: %s", param->auth_cmpl.device_name);
             //ESP_LOG_BUFFER_HEX(BT_AV_TAG, param->auth_cmpl.bda, ESP_BD_ADDR_LEN);
-            snprintf((char*)buffer, 64, "ESP_BT_GAP_AUTH_CMPL_EVT: %s\r\n", param->auth_cmpl.device_name);
-            esp_at_port_write_data(buffer, strlen((char*)buffer));
+            //snprintf((char*)buffer, 64, "ESP_BT_GAP_AUTH_CMPL_EVT: %s\r\n", param->auth_cmpl.device_name);
+            //esp_at_port_write_data(buffer, strlen((char*)buffer));
         }
         else {
             //ESP_LOGE(BT_AV_TAG, "authentication failed, status: %d", param->auth_cmpl.stat);
-            snprintf((char*)buffer, 64, "ESP_BT_GAP_AUTH_CMPL_EVT - Authentication Failed: %d\r\n", param->auth_cmpl.stat);
-            esp_at_port_write_data(buffer, strlen((char*)buffer));
+            //snprintf((char*)buffer, 64, "ESP_BT_GAP_AUTH_CMPL_EVT - Authentication Failed: %d\r\n", param->auth_cmpl.stat);
+            //esp_at_port_write_data(buffer, strlen((char*)buffer));
         }
         //ESP_LOGI(BT_AV_TAG, "link key type of current link is: %d", param->auth_cmpl.lk_type);
         break;
@@ -206,20 +166,20 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* pa
                                /* when Security Simple Pairing user confirmation requested, this event comes */
     case ESP_BT_GAP_CFM_REQ_EVT:
         //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_CFM_REQ_EVT Please compare the numeric value: %06"PRIu32, param->cfm_req.num_val);
-        snprintf((char*)buffer, 64, "ESP_BT_GAP_CFM_REQ_EVT Please compare the numeric value: %06u32\r\n", param->cfm_req.num_val);
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        //snprintf((char*)buffer, 64, "ESP_BT_GAP_CFM_REQ_EVT Please compare the numeric value: %06u32\r\n", param->cfm_req.num_val);
+        //esp_at_port_write_data(buffer, strlen((char*)buffer));
         esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
         break;
         /* when Security Simple Pairing passkey notified, this event comes */
     case ESP_BT_GAP_KEY_NOTIF_EVT:
-        snprintf((char*)buffer, 64, "ESP_BT_GAP_KEY_NOTIF_EVT - SSP passkey notified \r\n");
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        //snprintf((char*)buffer, 64, "ESP_BT_GAP_KEY_NOTIF_EVT - SSP passkey notified \r\n");
+        //esp_at_port_write_data(buffer, strlen((char*)buffer));
         //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_KEY_NOTIF_EVT passkey: %06"PRIu32, param->key_notif.passkey);
         break;
         /* when Security Simple Pairing passkey requested, this event comes */
     case ESP_BT_GAP_KEY_REQ_EVT:
-        snprintf((char*)buffer, 64, "ESP_BT_GAP_KEY_REQ_EVT - SSP passkey required \r\n");
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        //snprintf((char*)buffer, 64, "ESP_BT_GAP_KEY_REQ_EVT - SSP passkey required \r\n");
+        //esp_at_port_write_data(buffer, strlen((char*)buffer));
         //ESP_LOGI(BT_AV_TAG, "ESP_BT_GAP_KEY_REQ_EVT Please enter passkey!");
         break;
 
@@ -245,13 +205,13 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* pa
     case ESP_BT_GAP_CONFIG_EIR_DATA_EVT:
         if (param->config_eir_data.stat == ESP_BT_STATUS_SUCCESS)
         {
-            snprintf((char*)buffer, 64, "ESP_BT_GAP_CONFIG_EIR_DATA_EVT Success \r\n");
-            esp_at_port_write_data(buffer, strlen((char*)buffer));
+            //snprintf((char*)buffer, 64, "ESP_BT_GAP_CONFIG_EIR_DATA_EVT Success \r\n");
+            //esp_at_port_write_data(buffer, strlen((char*)buffer));
         }
         else
         {
-            snprintf((char*)buffer, 64, "ESP_BT_GAP_CONFIG_EIR_DATA_EVT Fail \r\n");
-            esp_at_port_write_data(buffer, strlen((char*)buffer));
+            //snprintf((char*)buffer, 64, "ESP_BT_GAP_CONFIG_EIR_DATA_EVT Fail \r\n");
+            //esp_at_port_write_data(buffer, strlen((char*)buffer));
         }
         break;
     default: {
@@ -267,16 +227,16 @@ static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param)
 
     switch (event) {
     case ESP_SDP_INIT_EVT:
-        snprintf((char*)buffer, 64, "ESP_SDP_CREATE_RECORD_COMP_EVT - SDP Initialized:\r\n");
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        //snprintf((char*)buffer, 64, "ESP_SDP_CREATE_RECORD_COMP_EVT - SDP Initialized:\r\n");
+        //esp_at_port_write_data(buffer, strlen((char*)buffer));
         break;
     case ESP_SDP_DEINIT_EVT:
         break;
     case ESP_SDP_SEARCH_COMP_EVT:
         break;
     case ESP_SDP_CREATE_RECORD_COMP_EVT:
-        snprintf((char*)buffer, 64, "ESP_SDP_CREATE_RECORD_COMP_EVT - SDP Record Created:\r\n");
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        //snprintf((char*)buffer, 64, "ESP_SDP_CREATE_RECORD_COMP_EVT - SDP Record Created:\r\n");
+        //esp_at_port_write_data(buffer, strlen((char*)buffer));
         break;
     case ESP_SDP_REMOVE_RECORD_COMP_EVT:
         break;
@@ -297,12 +257,12 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     case ESP_SPP_INIT_EVT:
         if (param->init.status == ESP_SPP_SUCCESS) {
             //ESP_LOGI(SPP_TAG, "ESP_SPP_INIT_EVT");
-            snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Initialized\r\n");
-            esp_at_port_write_data(buffer, strlen((char *)buffer));
+            //snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Initialized\r\n");
+            //esp_at_port_write_data(buffer, strlen((char *)buffer));
             esp_spp_start_srv(sec_mask, role_slave, 2, SPP_SERVER_NAME);
         } else {
-            snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Failed\r\n");
-            esp_at_port_write_data(buffer, strlen((char *)buffer));
+            //snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Failed\r\n");
+            //esp_at_port_write_data(buffer, strlen((char *)buffer));
         }
         break;
     case ESP_SPP_DISCOVERY_COMP_EVT:
@@ -317,11 +277,11 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         break;
     case ESP_SPP_START_EVT:
         if (param->start.status == ESP_SPP_SUCCESS) {
-            snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Success\r\n");
-            esp_at_port_write_data(buffer, strlen((char *)buffer));
+            //snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Success\r\n");
+            //esp_at_port_write_data(buffer, strlen((char *)buffer));
         } else {
-            snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Failed\r\n");
-            esp_at_port_write_data(buffer, strlen((char *)buffer));
+            //snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Failed\r\n");
+            //esp_at_port_write_data(buffer, strlen((char *)buffer));
         }
         break;
     case ESP_SPP_CL_INIT_EVT:
