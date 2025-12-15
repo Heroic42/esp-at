@@ -20,6 +20,11 @@
 static bool bd_already_enable = false;
 static bool bd_already_init = false;
 
+static uint32_t iap2_spp_handle = 0;  // Handle for iAP2 connection
+static uint32_t spp_spp_handle = 0;   // Handle for regular SPP connection
+static bool iap2_channel_open = false;
+static bool spp_channel_open = false;
+
 static const esp_spp_sec_t sec_mask = ESP_SPP_SEC_AUTHENTICATE;
 static const esp_spp_role_t role_slave = ESP_SPP_ROLE_SLAVE;
 static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_CB;
@@ -43,72 +48,65 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 {
     uint8_t buffer[64] = {0};
     
-    //Register GAP Callback
+    // Register callbacks FIRST before any SPP init
     esp_bt_gap_register_callback(bt_app_gap_cb);
-
-    //Register SPP Callback
-    esp_spp_register_callback(esp_spp_cb);
-
-
-    //Register SDP Callback
+    esp_spp_register_callback(esp_spp_cb);  // <-- Register BEFORE esp_spp_init
     esp_sdp_register_callback(bt_app_sdp_cb);
 
-    //Initialize SDP
-    if ((esp_sdp_init()) != ESP_OK) {
+    // Now initialize SPP - your callback will catch ESP_SPP_INIT_EVT
+    esp_spp_cfg_t bt_spp_cfg = {
+        .mode = ESP_SPP_MODE_CB,
+        .enable_l2cap_ertm = true,
+        .tx_buffer_size = ESP_SPP_MAX_TX_BUFFER_SIZE,
+    };
+    
+    if (esp_spp_enhanced_init(&bt_spp_cfg) != ESP_OK) {
+        snprintf((char*)buffer, 64, "SPP init failed\r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    esp_bluetooth_sdp_raw_record_t record = { 0 };
+    // Initialize SDP
+    if (esp_sdp_init() != ESP_OK) {
+        return ESP_AT_RESULT_CODE_ERROR;
+    }
 
+    // Create SDP record for iAP2
+    esp_bluetooth_sdp_raw_record_t record = { 0 };
     record.hdr.type = ESP_SDP_TYPE_RAW;
     record.hdr.uuid.len = sizeof(UUID_UNKNOWN);
     memcpy(record.hdr.uuid.uuid.uuid128, UUID_UNKNOWN, sizeof(UUID_UNKNOWN));
     record.hdr.service_name_length = strlen(sdp_service_name)+1;
     record.hdr.service_name = sdp_service_name;
-    record.hdr.rfcomm_channel_number = 1;
+    record.hdr.rfcomm_channel_number = 1;  // iAP2 on channel 1
     record.hdr.l2cap_psm = BT_L2CAP_DYNAMIC_PSM;
     record.hdr.profile_version = BT_UNKNOWN_PROFILE_VERSION;
-    record.hdr.user1_ptr = NULL;
-    record.hdr.user1_ptr_len = 0;
 
-    //Set SDP Record
-    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK)
-    {
+    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK) {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    //Configure EIR Data
-
+    // Configure EIR Data
     esp_bt_eir_data_t eir_data = { 0 };
-
     eir_data.fec_required = false;
     eir_data.include_txpower = true;
     eir_data.include_uuid = true;
     eir_data.include_name = true;
-    eir_data.flag = 0;
-    eir_data.manufacturer_len = 0;
-    eir_data.url_len = 0;
     
-    //Configure EIR Data
-    if (esp_bt_gap_config_eir_data(&eir_data) != ESP_OK)
-    {
+    if (esp_bt_gap_config_eir_data(&eir_data) != ESP_OK) {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    //Enable Secure Simple Pairing
-
+    // Enable Secure Simple Pairing
     esp_bt_sp_param_t param_type = ESP_BT_SP_IOCAP_MODE;
     esp_bt_io_cap_t iocap = ESP_BT_IO_CAP_IO;
 
-
-    if (esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t)) != ESP_OK)
-    {
+    if (esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t)) != ESP_OK) {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    //Set Scan Mode
-    if (esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE) != ESP_OK)
-    {
+    // Set Scan Mode
+    if (esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE) != ESP_OK) {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
@@ -251,62 +249,164 @@ static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param)
 static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
     char bda_str[18] = {0};
-    uint8_t buffer[64] = { 0 };
+    uint8_t buffer[128] = { 0 };
 
     switch (event) {
     case ESP_SPP_INIT_EVT:
-        if (param->init.status == ESP_SPP_SUCCESS) {
-            //ESP_LOGI(SPP_TAG, "ESP_SPP_INIT_EVT");
-            //snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Initialized\r\n");
-            //esp_at_port_write_data(buffer, strlen((char *)buffer));
-            esp_spp_start_srv(sec_mask, role_slave, 2, SPP_SERVER_NAME);
+    if (param->init.status == ESP_SPP_SUCCESS) {
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_INIT_EVT - SPP Initialized\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        
+        // Start iAP2 server on channel 1
+        esp_err_t ret = esp_spp_start_srv(sec_mask, role_slave, 1, "GEODE-IAP2");
+        if (ret == ESP_OK) {
+            snprintf((char *)buffer, 128, "[RFCOMM] Started iAP2 server on channel 1\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
         } else {
-            //snprintf((char *)buffer, 64, "ESP_SPP_INIT_EVT - Failed\r\n");
-            //esp_at_port_write_data(buffer, strlen((char *)buffer));
+            snprintf((char *)buffer, 128, "[RFCOMM] FAILED to start iAP2 server: %d\r\n", ret);
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        }
+        
+        // Start SPP server on channel 2
+        ret = esp_spp_start_srv(sec_mask, role_slave, 2, SPP_SERVER_NAME);
+        if (ret == ESP_OK) {
+            snprintf((char *)buffer, 128, "[RFCOMM] Started SPP server on channel 2\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        } else {
+            snprintf((char *)buffer, 128, "[RFCOMM] FAILED to start SPP server: %d\r\n", ret);
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        }
+    } else {
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_INIT_EVT - FAILED (status=%d)\r\n", param->init.status);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+    }
+    break;
+        
+    case ESP_SPP_DISCOVERY_COMP_EVT:
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_DISCOVERY_COMP_EVT - Discovery complete (status=%d)\r\n", 
+                 param->disc_comp.status);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        break;
+        
+    case ESP_SPP_OPEN_EVT:
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_OPEN_EVT - Channel opened (handle=%d, status=%d)\r\n",
+                 param->open.handle, param->open.status);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        break;
+        
+    case ESP_SPP_CLOSE_EVT:
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_CLOSE_EVT - Channel closed (handle=%d, status=%d, async=%d)\r\n",
+                 param->close.handle, param->close.status, param->close.async);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        
+        // Clear channel state
+        if (param->close.handle == iap2_spp_handle) {
+            iap2_channel_open = false;
+            iap2_spp_handle = 0;
+        } else if (param->close.handle == spp_spp_handle) {
+            spp_channel_open = false;
+            spp_spp_handle = 0;
         }
         break;
-    case ESP_SPP_DISCOVERY_COMP_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_DISCOVERY_COMP_EVT");
-        break;
-    case ESP_SPP_OPEN_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_OPEN_EVT");
-        break;
-    case ESP_SPP_CLOSE_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_CLOSE_EVT status:%d handle:%"PRIu32" close_by_remote:%d", param->close.status,
-        //         param->close.handle, param->close.async);
-        break;
+        
     case ESP_SPP_START_EVT:
         if (param->start.status == ESP_SPP_SUCCESS) {
-            //snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Success\r\n");
-            //esp_at_port_write_data(buffer, strlen((char *)buffer));
+            snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_START_EVT - Server started (handle=%d, scn=%d, sec_id=%d)\r\n",
+                     param->start.handle, param->start.scn, param->start.sec_id);
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
         } else {
-            //snprintf((char *)buffer, 64, "ESP_SPP_START_EVT - Failed\r\n");
-            //esp_at_port_write_data(buffer, strlen((char *)buffer));
+            snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_START_EVT - Server start FAILED (status=%d)\r\n",
+                     param->start.status);
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
         }
         break;
-    case ESP_SPP_CL_INIT_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_CL_INIT_EVT");
-        break;
-    case ESP_SPP_DATA_IND_EVT:
-        //
-        break;
-    case ESP_SPP_CONG_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_CONG_EVT");
-        break;
-    case ESP_SPP_WRITE_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_WRITE_EVT");
-        break;
+        
     case ESP_SPP_SRV_OPEN_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_OPEN_EVT status:%d handle:%"PRIu32", rem_bda:[%s]", param->srv_open.status,
-        //         param->srv_open.handle, bda2str(param->srv_open.rem_bda, bda_str, sizeof(bda_str)));
+        snprintf((char *)buffer, 128, "[RFCOMM] *** ESP_SPP_SRV_OPEN_EVT *** - RFCOMM CHANNEL ACCEPTED\r\n"
+                 "  Handle: %d\r\n"
+                 "  Status: %d\r\n"
+                 "  Remote BD_ADDR: %02x:%02x:%02x:%02x:%02x:%02x\r\n"
+                 "  SCN: %d\r\n",
+                 param->srv_open.handle,
+                 param->srv_open.status,
+                 param->srv_open.rem_bda[0], param->srv_open.rem_bda[1],
+                 param->srv_open.rem_bda[2], param->srv_open.rem_bda[3],
+                 param->srv_open.rem_bda[4], param->srv_open.rem_bda[5],
+                 param->srv_open.new_listen_handle);  // This gives us the SCN
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        
+        // Track which channel was opened based on handle or other criteria
+        // You may need to check the SCN to determine if it's iAP2 (1) or SPP (2)
+        if (param->srv_open.new_listen_handle == 1) {  // Channel 1 = iAP2
+            iap2_channel_open = true;
+            iap2_spp_handle = param->srv_open.handle;
+            snprintf((char *)buffer, 128, "[RFCOMM] ==> This is the iAP2 channel!\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        } else if (param->srv_open.new_listen_handle == 2) {  // Channel 2 = SPP
+            spp_channel_open = true;
+            spp_spp_handle = param->srv_open.handle;
+            snprintf((char *)buffer, 128, "[RFCOMM] ==> This is the SPP channel!\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        }
         break;
+        
+    case ESP_SPP_DATA_IND_EVT:
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_DATA_IND_EVT - Data received (handle=%d, len=%d)\r\n",
+                 param->data_ind.handle, param->data_ind.len);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        
+        // Log first 16 bytes of data
+        snprintf((char *)buffer, 128, "[RFCOMM] Data (first %d bytes): ", 
+                 param->data_ind.len > 16 ? 16 : param->data_ind.len);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        
+        for (int i = 0; i < (param->data_ind.len > 16 ? 16 : param->data_ind.len); i++) {
+            snprintf((char *)buffer, 128, "%02X ", param->data_ind.data[i]);
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        }
+        snprintf((char *)buffer, 128, "\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        
+        // Check for iAP2 detect sequence: FF 55 02 00 EE 10
+        if (param->data_ind.len >= 6 &&
+            param->data_ind.data[0] == 0xFF &&
+            param->data_ind.data[1] == 0x55 &&
+            param->data_ind.data[2] == 0x02) {
+            snprintf((char *)buffer, 128, "[RFCOMM] ==> iAP2 DETECT SEQUENCE RECEIVED!\r\n");
+            esp_at_port_write_data(buffer, strlen((char *)buffer));
+        }
+        break;
+        
+    case ESP_SPP_CONG_EVT:
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_CONG_EVT - Congestion (handle=%d, cong=%d)\r\n",
+                 param->cong.handle, param->cong.cong);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        break;
+        
+    case ESP_SPP_WRITE_EVT:
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_WRITE_EVT - Write complete (handle=%d, len=%d, cong=%d)\r\n",
+                 param->write.handle, param->write.len, param->write.cong);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        break;
+        
     case ESP_SPP_SRV_STOP_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_STOP_EVT");
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_SRV_STOP_EVT - Server stopped\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
         break;
+        
     case ESP_SPP_UNINIT_EVT:
-        //ESP_LOGI(SPP_TAG, "ESP_SPP_UNINIT_EVT");
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_UNINIT_EVT - SPP uninitialized\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
         break;
+        
+    case ESP_SPP_CL_INIT_EVT:
+        snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_CL_INIT_EVT - Client initialized\r\n");
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
+        break;
+        
     default:
+        snprintf((char *)buffer, 128, "[RFCOMM] Unknown SPP event: %d\r\n", event);
+        esp_at_port_write_data(buffer, strlen((char *)buffer));
         break;
     }
 }
