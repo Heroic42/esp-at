@@ -78,7 +78,7 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
     memcpy(record.hdr.uuid.uuid.uuid128, UUID_UNKNOWN, sizeof(UUID_UNKNOWN));
     record.hdr.service_name_length = strlen(sdp_service_name)+1;
     record.hdr.service_name = sdp_service_name;
-    record.hdr.rfcomm_channel_number = 1;  // iAP2 on channel 1
+    record.hdr.rfcomm_channel_number = 2;  // iAP2 on channel 1
     record.hdr.l2cap_psm = BT_L2CAP_DYNAMIC_PSM;
     record.hdr.profile_version = BT_UNKNOWN_PROFILE_VERSION;
 
@@ -258,7 +258,7 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         esp_at_port_write_data(buffer, strlen((char *)buffer));
         
         // Start iAP2 server on channel 1
-        esp_err_t ret = esp_spp_start_srv(sec_mask, role_slave, 1, "GEODE-IAP2");
+        esp_err_t ret = esp_spp_start_srv(sec_mask, role_slave, 2, "GEODE-IAP2");
         if (ret == ESP_OK) {
             snprintf((char *)buffer, 128, "[RFCOMM] Started iAP2 server on channel 1\r\n");
             esp_at_port_write_data(buffer, strlen((char *)buffer));
@@ -268,7 +268,7 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         }
         
         // Start SPP server on channel 2
-        ret = esp_spp_start_srv(sec_mask, role_slave, 2, SPP_SERVER_NAME);
+        ret = esp_spp_start_srv(sec_mask, role_slave, 1, SPP_SERVER_NAME);
         if (ret == ESP_OK) {
             snprintf((char *)buffer, 128, "[RFCOMM] Started SPP server on channel 2\r\n");
             esp_at_port_write_data(buffer, strlen((char *)buffer));
