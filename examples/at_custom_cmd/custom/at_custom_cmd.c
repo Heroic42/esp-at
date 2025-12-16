@@ -17,6 +17,9 @@
 #include "esp_bt.h"
 #endif
 
+#define IAP2_CHANNEL_NUM    2
+#define SPP_CHANNEL_NUM     1
+
 static bool bd_already_enable = false;
 static bool bd_already_init = false;
 
@@ -260,7 +263,7 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         // Start iAP2 server on channel 1
         esp_err_t ret = esp_spp_start_srv(sec_mask, role_slave, 2, "GEODE-IAP2");
         if (ret == ESP_OK) {
-            snprintf((char *)buffer, 128, "[RFCOMM] Started iAP2 server on channel 1\r\n");
+            snprintf((char *)buffer, 128, "[RFCOMM] Started iAP2 server on channel 2\r\n");
             esp_at_port_write_data(buffer, strlen((char *)buffer));
         } else {
             snprintf((char *)buffer, 128, "[RFCOMM] FAILED to start iAP2 server: %d\r\n", ret);
@@ -270,7 +273,7 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         // Start SPP server on channel 2
         ret = esp_spp_start_srv(sec_mask, role_slave, 1, SPP_SERVER_NAME);
         if (ret == ESP_OK) {
-            snprintf((char *)buffer, 128, "[RFCOMM] Started SPP server on channel 2\r\n");
+            snprintf((char *)buffer, 128, "[RFCOMM] Started SPP server on channel 1\r\n");
             esp_at_port_write_data(buffer, strlen((char *)buffer));
         } else {
             snprintf((char *)buffer, 128, "[RFCOMM] FAILED to start SPP server: %d\r\n", ret);
@@ -311,6 +314,16 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         
     case ESP_SPP_START_EVT:
         if (param->start.status == ESP_SPP_SUCCESS) {
+
+            if(param->start.scn == IAP2_CHANNEL_NUM)
+            {
+                iap2_spp_handle = param->start.handle;
+            }
+            else if(param->start.scn == SPP_CHANNEL_NUM)
+            {
+                spp_spp_handle = param->srv_open.handle;
+            }
+
             snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_START_EVT - Server started (handle=%d, scn=%d, sec_id=%d)\r\n",
                      param->start.handle, param->start.scn, param->start.sec_id);
             esp_at_port_write_data(buffer, strlen((char *)buffer));
@@ -322,33 +335,39 @@ static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         break;
         
     case ESP_SPP_SRV_OPEN_EVT:
-        snprintf((char *)buffer, 128, "[RFCOMM] *** ESP_SPP_SRV_OPEN_EVT *** - RFCOMM CHANNEL ACCEPTED\r\n"
-                 "  Handle: %d\r\n"
-                 "  Status: %d\r\n"
-                 "  Remote BD_ADDR: %02x:%02x:%02x:%02x:%02x:%02x\r\n"
-                 "  SCN: %d\r\n",
-                 param->srv_open.handle,
-                 param->srv_open.status,
-                 param->srv_open.rem_bda[0], param->srv_open.rem_bda[1],
-                 param->srv_open.rem_bda[2], param->srv_open.rem_bda[3],
-                 param->srv_open.rem_bda[4], param->srv_open.rem_bda[5],
-                 param->srv_open.new_listen_handle);  // This gives us the SCN
+    snprintf((char *)buffer, 128, 
+             "[RFCOMM] *** ESP_SPP_SRV_OPEN_EVT *** - Channel %d opened. Checking %d channel\r\n",
+             param->srv_open.new_listen_handle,param->srv_open.handle);
+    esp_at_port_write_data(buffer, strlen((char *)buffer));
+    
+    // Track which channel
+    if(param->srv_open.handle == iap2_spp_handle)
+    {
+        iap2_channel_open = true;
+        snprintf((char *)buffer, 128, "[RFCOMM] ==> This is iAP2 channel - SENDING DETECT SEQUENCE\r\n");
         esp_at_port_write_data(buffer, strlen((char *)buffer));
         
-        // Track which channel was opened based on handle or other criteria
-        // You may need to check the SCN to determine if it's iAP2 (1) or SPP (2)
-        if (param->srv_open.new_listen_handle == 1) {  // Channel 1 = iAP2
-            iap2_channel_open = true;
-            iap2_spp_handle = param->srv_open.handle;
-            snprintf((char *)buffer, 128, "[RFCOMM] ==> This is the iAP2 channel!\r\n");
+        // SEND iAP2 DETECT SEQUENCE IMMEDIATELY
+        const uint8_t iap2_detect[6] = { 0xFF, 0x55, 0x02, 0x00, 0xEE, 0x10 };
+        
+        // Give iOS a moment to send credits (small delay)
+        vTaskDelay(pdMS_TO_TICKS(100));  // 100ms delay
+        
+        esp_err_t ret = esp_spp_write(param->srv_open.handle, 6, (uint8_t *)iap2_detect);
+        if (ret == ESP_OK) {
+            snprintf((char *)buffer, 128, "[RFCOMM] ==> iAP2 detect sequence sent!\r\n");
             esp_at_port_write_data(buffer, strlen((char *)buffer));
-        } else if (param->srv_open.new_listen_handle == 2) {  // Channel 2 = SPP
-            spp_channel_open = true;
-            spp_spp_handle = param->srv_open.handle;
-            snprintf((char *)buffer, 128, "[RFCOMM] ==> This is the SPP channel!\r\n");
+        } else {
+            snprintf((char *)buffer, 128, "[RFCOMM] ==> FAILED to send detect sequence: %d\r\n", ret);
             esp_at_port_write_data(buffer, strlen((char *)buffer));
         }
-        break;
+    }   
+    else if(param->srv_open.handle == spp_spp_handle)
+    {
+        spp_channel_open = true;
+        
+    }
+    break;
         
     case ESP_SPP_DATA_IND_EVT:
         snprintf((char *)buffer, 128, "[RFCOMM] ESP_SPP_DATA_IND_EVT - Data received (handle=%d, len=%d)\r\n",
