@@ -13,13 +13,17 @@
 #include "esp_sdp_api.h"
 #include "esp_spp_api.h"
 
+#include "rfcdefs.h"
+#include "port_api.h"
+#include "port_int.h"
+#include "rfc_int.h"
 
 #if (BT_CONTROLLER_INCLUDED == TRUE)
 #include "esp_bt.h"
 #endif
 
-#define IAP2_CHANNEL_NUM    2
-#define SPP_CHANNEL_NUM     1
+#define IAP2_CHANNEL_NUM    1
+#define SPP_CHANNEL_NUM     2
 
 static bool bd_already_enable = false;
 static bool bd_already_init = false;
@@ -48,6 +52,7 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* pa
 static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param);
 static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 
+//extern int PORT_GetState(uint16_t handle, tPORT_STATE *p_settings);
 
 static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 {
@@ -126,7 +131,41 @@ static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 }
 
 static uint8_t at_query_cmd_gazelle_channel(uint8_t *cmd_name)
-{   
+{
+    uint8_t buffer[128] = {0};
+    uint8_t scn = 0;
+    bool found = false;
+    
+    // Query all RFCOMM ports to find active connection
+    for (uint8_t i = 1; i < 3; i++) {
+        
+        tPORT *p_port = &rfc_cb.port.port[i-1];
+
+        if(p_port->in_use)
+        {
+            BD_ADDR bd_addr;
+            
+            memcpy(bd_addr, p_port->bd_addr, 6);
+
+            // Get port handle - this is an internal Bluedroid function
+            if (PORT_CheckConnection(i, FALSE, bd_addr, NULL) == PORT_SUCCESS) {
+                // Port is connected
+                scn = i;
+                found = true;
+                break;
+            }
+        }
+    }
+    
+    if (!found) {
+        snprintf((char*)buffer, 128, "+GAZELLE_CHANNEL:DISCONNECTED\r\n");
+        esp_at_port_write_data(buffer, strlen((char*)buffer));
+        return ESP_AT_RESULT_CODE_OK;
+    }
+    
+    snprintf((char*)buffer, 128, "+GAZELLE_CHANNEL:%d\r\n", scn);
+    esp_at_port_write_data(buffer, strlen((char*)buffer));
+    
     return ESP_AT_RESULT_CODE_OK;
 }
 
