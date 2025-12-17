@@ -13,6 +13,7 @@
 #include "esp_sdp_api.h"
 #include "esp_spp_api.h"
 
+
 #if (BT_CONTROLLER_INCLUDED == TRUE)
 #include "esp_bt.h"
 #endif
@@ -47,77 +48,91 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t* pa
 static void bt_app_sdp_cb(esp_sdp_cb_event_t event, esp_sdp_cb_param_t* param);
 static void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
 
+
 static uint8_t at_exe_cmd_gazelle_init(uint8_t *cmd_name)
 {
     uint8_t buffer[64] = {0};
     
-    // Register callbacks FIRST before any SPP init
+    //Register GAP Callback
     esp_bt_gap_register_callback(bt_app_gap_cb);
-    esp_spp_register_callback(esp_spp_cb);  // <-- Register BEFORE esp_spp_init
+
+    //Register SPP Callback
+    esp_spp_register_callback(esp_spp_cb);
+
+
+    //Register SDP Callback
     esp_sdp_register_callback(bt_app_sdp_cb);
 
-    // Now initialize SPP - your callback will catch ESP_SPP_INIT_EVT
-    esp_spp_cfg_t bt_spp_cfg = {
-        .mode = ESP_SPP_MODE_CB,
-        .enable_l2cap_ertm = true,
-        .tx_buffer_size = ESP_SPP_MAX_TX_BUFFER_SIZE,
-    };
-    
-    if (esp_spp_enhanced_init(&bt_spp_cfg) != ESP_OK) {
-        snprintf((char*)buffer, 64, "SPP init failed\r\n");
-        esp_at_port_write_data(buffer, strlen((char*)buffer));
+    //Initialize SDP
+    if ((esp_sdp_init()) != ESP_OK) {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    // Initialize SDP
-    if (esp_sdp_init() != ESP_OK) {
-        return ESP_AT_RESULT_CODE_ERROR;
-    }
-
-    // Create SDP record for iAP2
     esp_bluetooth_sdp_raw_record_t record = { 0 };
+
     record.hdr.type = ESP_SDP_TYPE_RAW;
     record.hdr.uuid.len = sizeof(UUID_UNKNOWN);
     memcpy(record.hdr.uuid.uuid.uuid128, UUID_UNKNOWN, sizeof(UUID_UNKNOWN));
     record.hdr.service_name_length = strlen(sdp_service_name)+1;
     record.hdr.service_name = sdp_service_name;
-    record.hdr.rfcomm_channel_number = 2;  // iAP2 on channel 1
+    record.hdr.rfcomm_channel_number = 1;
     record.hdr.l2cap_psm = BT_L2CAP_DYNAMIC_PSM;
     record.hdr.profile_version = BT_UNKNOWN_PROFILE_VERSION;
+    record.hdr.user1_ptr = NULL;
+    record.hdr.user1_ptr_len = 0;
 
-    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK) {
+    //Set SDP Record
+    if (esp_sdp_create_record((esp_bluetooth_sdp_record_t*)&record) != ESP_OK)
+    {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    // Configure EIR Data
+    //Configure EIR Data
+
     esp_bt_eir_data_t eir_data = { 0 };
+
     eir_data.fec_required = false;
     eir_data.include_txpower = true;
     eir_data.include_uuid = true;
     eir_data.include_name = true;
+    eir_data.flag = 0;
+    eir_data.manufacturer_len = 0;
+    eir_data.url_len = 0;
     
-    if (esp_bt_gap_config_eir_data(&eir_data) != ESP_OK) {
+    //Configure EIR Data
+    if (esp_bt_gap_config_eir_data(&eir_data) != ESP_OK)
+    {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    // Enable Secure Simple Pairing
+    //Enable Secure Simple Pairing
+
     esp_bt_sp_param_t param_type = ESP_BT_SP_IOCAP_MODE;
     esp_bt_io_cap_t iocap = ESP_BT_IO_CAP_IO;
 
-    if (esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t)) != ESP_OK) {
+
+    if (esp_bt_gap_set_security_param(param_type, &iocap, sizeof(uint8_t)) != ESP_OK)
+    {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
-    // Set Scan Mode
-    if (esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE) != ESP_OK) {
+    //Set Scan Mode
+    if (esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE) != ESP_OK)
+    {
         return ESP_AT_RESULT_CODE_ERROR;
     }
 
     return ESP_AT_RESULT_CODE_OK;
 }
 
+static uint8_t at_query_cmd_gazelle_channel(uint8_t *cmd_name)
+{   
+    return ESP_AT_RESULT_CODE_OK;
+}
+
 static const esp_at_cmd_struct at_custom_cmd_gazelle[] = {
     {"+GAZELLE_INIT", NULL, NULL, NULL, at_exe_cmd_gazelle_init},
+    {"+GAZELLE_CHANNEL",NULL,at_query_cmd_gazelle_channel,NULL,NULL },
     /**
      * @brief You can define your own AT commands here.
      */
