@@ -137,7 +137,7 @@ static uint8_t at_query_cmd_gazelle_channel(uint8_t *cmd_name)
     bool found = false;
     
     // Query all RFCOMM ports to find active connection
-    for (uint8_t i = 1; i < 3; i++) {
+    for (uint8_t i = 1; i <= MAX_RFC_PORTS; i++) {
         
         tPORT *p_port = &rfc_cb.port.port[i-1];
 
