@@ -22,6 +22,8 @@
 #include "esp_bt.h"
 #endif
 
+#define BT_FW_VERSION   "0.0.1"
+
 #define IAP2_CHANNEL_NUM    1
 #define SPP_CHANNEL_NUM     2
 
@@ -169,9 +171,18 @@ static uint8_t at_query_cmd_gazelle_channel(uint8_t *cmd_name)
     return ESP_AT_RESULT_CODE_OK;
 }
 
+static uint8_t at_query_cmd_fw_version(uint8_t *cmd_name)
+{
+    uint8_t buffer[128] = {0};
+    snprintf((char*)buffer, 128, "+BT_FW_VERSION:%s\r\n",BT_FW_VERSION);
+    esp_at_port_write_data(buffer, strlen((char*)buffer));
+    return ESP_AT_RESULT_CODE_OK;
+}
+
 static const esp_at_cmd_struct at_custom_cmd_gazelle[] = {
     {"+GAZELLE_INIT", NULL, NULL, NULL, at_exe_cmd_gazelle_init},
     {"+GAZELLE_CHANNEL",NULL,at_query_cmd_gazelle_channel,NULL,NULL },
+    {"+BT_FW_VERSION",NULL,at_query_cmd_fw_version,NULL,NULL },
     /**
      * @brief You can define your own AT commands here.
      */
